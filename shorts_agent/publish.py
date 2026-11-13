@@ -12,7 +12,7 @@ def youtube_upload(video, script):
         print("SKIP YouTube: OAuth secrets are not configured.")
         return None
     from google.auth.transport.requests import Request
-    from google.auth2.credentials import Credentials
+    from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
@@ -23,7 +23,7 @@ def youtube_upload(video, script):
     client = build("youtube", "v3", credentials=creds, cache_discovery=False)
     request = client.videos().insert(part="snippet,status", body={
         "snippet": {"title": script["title"][:100], "description": script["description"], "categoryId": "24"},
-        "status": {"privacyStatus": os.getenv("YOUTUBE_PRIVACY", "private"), "seldDeclaredMadeForKids": False},
+        "status": {"privacyStatus": os.getenv("YOUTUBE_PRIVACY", "private"), "selfDeclaredMadeForKids": False},
     }, media_body=MediaFileUpload(str(video), mimetype="video/mp4", resumable=True, chunksize=5 * 1024 * 1024))
     result = None
     while result is None:
@@ -48,7 +48,7 @@ def instagram_upload(video, script):
     token = os.environ["IG_ACCESS_TOKEN"]
     user = os.environ["IG_USER_ID"]
     r = requests.post(f"{base}/{user}/media", data={"media_type": "REELS", "video_url": public_url,
-        "caption": f"{script['title']}\n\n{script['description']}":2100], "access_token": token}, timeout=45)
+        "caption": f"{script['title']}\n\n{script['description']}"[:2100], "access_token": token}, timeout=45)
     r.raise_for_status()
     container_id = r.json()["id"]
     for attempt in range(30):
@@ -80,7 +80,7 @@ def publish(video: Path, script: dict):
         try:
             results[name] = fn(video, script)
         except Exception as exc:
-            errors.append(f"{name}: {type(exc).__name__: {exc}")
+            errors.append(f"{name}: {type(exc).__name__}: {exc}")
             print(f"ERROR publishing to {name}: {type(exc).__name__}: {exc}")
     if errors:
         results["errors"] = errors
