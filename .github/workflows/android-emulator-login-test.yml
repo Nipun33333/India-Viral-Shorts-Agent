@@ -12,7 +12,8 @@ concurrency:
 
 jobs:
   emulator-login:
-    runs-on: ubuntu-latest
+    # Standard GitHub-hosted runners may not expose usable nested virtualization.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       EMULATOR_VNC_PASSWORD: ${{ secrets.EMULATOR_VNC_PASSWORD }}
@@ -30,12 +31,13 @@ jobs:
             exit 1
           fi
 
-      - name: Enable KVM
+      - name: Enable KVM and report virtualization capability
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm
+          grep -E -m1 '(vmx|svm)' /proc/cpuinfo || echo "::warning::CPU virtualization flags are not exposed."
 
       - name: Install virtual display and remote-screen tools
         run: |
@@ -51,9 +53,9 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-googleplay-api35-${{ github.run_id }}-${{ github.run_attempt }}
+          key: avd-googleplay-api35-ubuntu24-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            avd-googleplay-api35-
+            avd-googleplay-api35-ubuntu24-
 
       - name: Install Cloudflare Tunnel
         run: |
@@ -71,8 +73,8 @@ jobs:
           heap-size: 512M
           disk-size: 8G
           avd-name: login-test
-          force-avd-creation: false
-          emulator-boot-timeout: 600
+          force-avd-creation: true
+          emulator-boot-timeout: 900
           emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           enable-hw-keyboard: true
@@ -84,9 +86,15 @@ jobs:
             x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass
             x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log
             websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 &
-            
+
             cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 &
             TUNNEL_PID=$!
+            cleanup() {
+              kill "$TUNNEL_PID" 2>/dev/null || true
+              adb emu kill 2>/dev/null || true
+            }
+            trap cleanup EXIT
+
             for i in $(seq 1 60); do
               TUNNEL_URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1 || true)
               if [ -n "$TUNNEL_URL" ]; then break; fi
@@ -102,17 +110,29 @@ jobs:
             echo "============================================================"
             echo "ANDROID EMULATOR SCREEN (temporary link; password required):"
             echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"
-            echo "VNC password: the value you saved as repository secret EMULATOR_VNC_PASSWORD"
-            echo "Open Google Play, sign in, and install YouTube Create if compatible."
-            echo "This session stays open for 20 minutes."
+            echo "VNC password: the value saved as repository secret EMULATOR_VNC_PASSWORD"
+            echo "Open Google Play and sign in. This session stays open for 20 minutes."
             echo "============================================================"
 
             sleep 1200
-            kill "$TUNNEL_PID" || true
-            adb emu kill || true
+
+      - name: Capture emulator diagnostics on failure
+        if: failure()
+        run: |
+          echo "AVD cache hit: ${{ steps.avd-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "KVM device:"
+          ls -l /dev/kvm || true
+          echo "Virtualization flags:"
+          grep -E -m1 '(vmx|svm)' /proc/cpuinfo || true
+          echo "Xvfb log:"
+          cat /tmp/xvfb.log || true
+          echo "Emulator processes:"
+          pgrep -af emulator || true
+          echo "ADB devices:"
+          adb devices -l || true
 
       - name: Report cache status
         if: always()
         run: |
           echo "AVD cache hit: ${{ steps.avd-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "This workflow is a one-time interactive login/cache experiment. It does not modify the existing Shorts publishing workflow." >> "$GITHUB_STEP_SUMMARY"
+          echo "This is a one-time interactive login/cache experiment. It does not modify the Shorts publishing workflow." >> "$GITHUB_STEP_SUMMARY"
