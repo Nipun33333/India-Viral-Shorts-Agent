@@ -1,0 +1,1 @@
+OPTIONAL MANUAL FLOW MODE: export two original 10-second Google Flow MP4s as scene_1.mp4 and scene_2.mp4 into this folder, then run --backend flow_manual --slot 2.  Google Flow credits are NOT API credits. Do not commit large MP4 files or account cookies.

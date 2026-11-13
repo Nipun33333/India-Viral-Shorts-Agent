@@ -1,0 +1,65 @@
+name: India Viral Shorts - two daily slots
+on:
+  schedule:
+    # GitHub Actions cron is UTC: 04:30 = 10:00 IST; 12:30 = 18:00 IST.
+    # GitHub schedules can be delayed or occasionally skipped.
+    - cron: '30 4,12 * * *'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: '1, 2 or all'
+        required: true
+        default: '1'
+        type: choice
+        options: ['1', '2', 'all']
+      backend:
+        description: 'motion=unattended; flow_manual=manually provided Flow MP4s'
+        required: true
+        default: 'motion'
+        type: choice
+        options: ['motion', 'flow_manual']
+permissions:
+  contents: read
+concurrency:
+  group: india-shorts-${{ github.ref }}-${{ github.event.schedule || inputs.slot }}
+  cancel-in-progress: false
+jobs:
+  create-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+      VIDEO_BACKEND: ${{ inputs.backend || 'motion' }}
+      VIDEO_SLOT: ${{ inputs.slot || 'auto' }}
+      AUTO_PUBLISH: 'true'
+      YOUTUBE_PRIVACY: private
+      TTS_BACKEND: auto
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install system requirements
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng fonts-noto-core
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+      - name: Run slot
+        run: python -m shorts_agent.main
+      - name: Preserve preview, scripts, and publish receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7
