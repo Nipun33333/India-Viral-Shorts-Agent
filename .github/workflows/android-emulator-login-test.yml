@@ -32,13 +32,16 @@ jobs:
             exit 1
           fi
 
-      - name: Report runner virtualization capability
+      - name: Enable KVM access for the runner
         run: |
-          echo "Runner: $(uname -a)"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
           echo "KVM device:"
-          ls -l /dev/kvm || true
+          ls -l /dev/kvm
           echo "CPU virtualization flags:"
-          grep -E -m1 '(vmx|svm)' /proc/cpuinfo || echo "::warning::CPU virtualization flags are not exposed; emulator will use software mode."
+          grep -E -m1 '(vmx|svm)' /proc/cpuinfo
 
       - name: Install virtual display and remote-screen tools
         run: |
@@ -76,19 +79,10 @@ jobs:
           avd-name: login-test
           force-avd-creation: true
           emulator-boot-timeout: 1200
-          emulator-options: -gpu software -noaudio -no-boot-anim -camera-back none -no-snapshot
+          emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           disable-animations: false
           enable-hw-keyboard: true
-          disable-linux-hw-accel: true
-          pre-emulator-launch-script: |
-            set -eu
-            QEMU_BIN="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
-            echo "Checking Android Emulator QEMU shared-library dependencies: $QEMU_BIN"
-            ldd "$QEMU_BIN" | tee /tmp/qemu-runtime-dependencies.txt
-            if grep -q "not found" /tmp/qemu-runtime-dependencies.txt; then
-              echo "::error::Android Emulator is missing one or more runtime libraries."
-              exit 1
-            fi
+          disable-linux-hw-accel: false
           script: |
             set -euo pipefail
             adb wait-for-device
