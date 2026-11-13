@@ -1,3 +1,6 @@
+import ast
+from pathlib import Path
+
 import pytest
 from shorts_agent.main import get_slots
 from shorts_agent.writer import fallback_script, _valid_script
@@ -16,3 +19,8 @@ def test_slot_selection():
     assert get_slots("all") == [1, 2]
     with pytest.raises(ValueError):
         get_slots("3")
+
+
+def test_all_python_modules_parse():
+    for path in Path("shorts_agent").glob("*.py"):
+        ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
