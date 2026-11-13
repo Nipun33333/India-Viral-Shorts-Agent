@@ -17,6 +17,7 @@ jobs:
     timeout-minutes: 40
     env:
       EMULATOR_VNC_PASSWORD: ${{ secrets.EMULATOR_VNC_PASSWORD }}
+      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: '120'
 
     steps:
       - name: Check VNC password secret
@@ -31,13 +32,13 @@ jobs:
             exit 1
           fi
 
-      - name: Enable KVM and report virtualization capability
+      - name: Report runner virtualization capability
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -l /dev/kvm
-          grep -E -m1 '(vmx|svm)' /proc/cpuinfo || echo "::warning::CPU virtualization flags are not exposed."
+          echo "Runner: $(uname -a)"
+          echo "KVM device:"
+          ls -l /dev/kvm || true
+          echo "CPU virtualization flags:"
+          grep -E -m1 '(vmx|svm)' /proc/cpuinfo || echo "::warning::CPU virtualization flags are not exposed; emulator will use software mode."
 
       - name: Install virtual display and remote-screen tools
         run: |
@@ -68,16 +69,17 @@ jobs:
           api-level: 35
           target: google_apis_playstore
           arch: x86_64
-          cores: 4
-          ram-size: 4096M
+          cores: 2
+          ram-size: 3072M
           heap-size: 512M
           disk-size: 8G
           avd-name: login-test
           force-avd-creation: true
-          emulator-boot-timeout: 900
-          emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 1200
+          emulator-options: -gpu software -noaudio -no-boot-anim -camera-back none -no-snapshot
           disable-animations: false
           enable-hw-keyboard: true
+          disable-linux-hw-accel: true
           script: |
             set -euo pipefail
             adb wait-for-device
