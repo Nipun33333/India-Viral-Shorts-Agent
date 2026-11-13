@@ -84,7 +84,7 @@ jobs:
           enable-hw-keyboard: true
           disable-linux-hw-accel: false
           script: |
-            set -euo pipefail
+            set -eu
             adb wait-for-device
             adb shell getprop sys.boot_completed
 
