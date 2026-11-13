@@ -43,7 +43,7 @@ jobs:
       - name: Install virtual display and remote-screen tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb x11vnc novnc websockify curl
+          sudo apt-get install -y xvfb x11vnc novnc websockify curl libpulse0
           Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
@@ -80,6 +80,15 @@ jobs:
           disable-animations: false
           enable-hw-keyboard: true
           disable-linux-hw-accel: true
+          pre-emulator-launch-script: |
+            set -eu
+            QEMU_BIN="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+            echo "Checking Android Emulator QEMU shared-library dependencies: $QEMU_BIN"
+            ldd "$QEMU_BIN" | tee /tmp/qemu-runtime-dependencies.txt
+            if grep -q "not found" /tmp/qemu-runtime-dependencies.txt; then
+              echo "::error::Android Emulator is missing one or more runtime libraries."
+              exit 1
+            fi
           script: |
             set -euo pipefail
             adb wait-for-device
