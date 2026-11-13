@@ -84,42 +84,9 @@ jobs:
           enable-hw-keyboard: true
           disable-linux-hw-accel: false
           script: |
-            set -eu
             adb wait-for-device
             adb shell getprop sys.boot_completed
-
-            x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass
-            x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log
-            websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 &
-
-            cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 &
-            TUNNEL_PID=$!
-            cleanup() {
-              kill "$TUNNEL_PID" 2>/dev/null || true
-              adb emu kill 2>/dev/null || true
-            }
-            trap cleanup EXIT
-
-            for i in $(seq 1 60); do
-              TUNNEL_URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cloudflared.log | head -n 1 || true)
-              if [ -n "$TUNNEL_URL" ]; then break; fi
-              sleep 2
-            done
-
-            if [ -z "${TUNNEL_URL:-}" ]; then
-              cat /tmp/cloudflared.log
-              echo "::error::Could not create the temporary screen link."
-              exit 1
-            fi
-
-            echo "============================================================"
-            echo "ANDROID EMULATOR SCREEN (temporary link; password required):"
-            echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"
-            echo "VNC password: the value saved as repository secret EMULATOR_VNC_PASSWORD"
-            echo "Open Google Play and sign in. This session stays open for 20 minutes."
-            echo "============================================================"
-
-            sleep 1200
+            bash -lc 'set -eu; TUNNEL_URL=""; x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass; x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log; websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 & cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 & TUNNEL_PID=$!; cleanup() { kill "$TUNNEL_PID" 2>/dev/null || true; adb emu kill 2>/dev/null || true; }; trap cleanup EXIT; for i in $(seq 1 60); do TUNNEL_URL=$(grep -Eo "https://[a-z0-9-]+[.]trycloudflare[.]com" /tmp/cloudflared.log | head -n 1 || true); if [ -n "$TUNNEL_URL" ]; then break; fi; sleep 2; done; if [ -z "$TUNNEL_URL" ]; then cat /tmp/cloudflared.log; echo "::error::Could not create the temporary screen link."; exit 1; fi; echo "============================================================"; echo "ANDROID EMULATOR SCREEN (temporary link; password required):"; echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"; echo "VNC password: the value saved as repository secret EMULATOR_VNC_PASSWORD"; echo "Open Google Play and sign in. This session stays open for 20 minutes."; echo "============================================================"; sleep 1200'
 
       - name: Capture emulator diagnostics on failure
         if: failure()
