@@ -82,7 +82,7 @@ def instagram_upload(video, script):
     base = f"https://graph.facebook.com/{os.getenv('META_GRAPH_VERSION', 'v24.0')}"
     token = os.environ["IG_ACCESS_TOKEN"]
     user = os.environ["IG_USER_ID"]
-    caption = f"{script['title']}\\n\\n{script['description']}"[:2100]
+    caption = f"{script['title']}\n\n{script['description']}"[:2100]
 
     response = requests.post(
         f"{base}/{user}/media",
