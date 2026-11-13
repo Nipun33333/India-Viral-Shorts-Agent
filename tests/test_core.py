@@ -24,3 +24,8 @@ def test_slot_selection():
 def test_all_python_modules_parse():
     for path in Path("shorts_agent").glob("*.py"):
         ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def test_publishing_module_has_valid_syntax():
+    path = Path("shorts_agent/publish.py")
+    ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
