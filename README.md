@@ -18,7 +18,7 @@ The default automatic backend is an original motion-graphics renderer. It does n
 
 ## YouTube Create app and Gemini Omni
 
-YouTube Create is available in India. Google currently lists Android phones with at least 4 GB RAM as supported; Google Play may still exclude virtual devices. The Gemini Omni video-generation feature inside YouTube Create is experimental, limited to selected creators, and generates clips up to 10 seconds long. It is not a public API that this repository can invoke, sign into, or control.
+YouTube Create is available in India. Google lists supported Android phones with at least 4 GB RAM. Its Gemini Omni video feature is experimental and available only to a limited number of creators in selected countries (including India); it can generate vertical clips up to 10 seconds, and each prompt is limited to 900 characters. It is not a public API that this repository can invoke, sign into, or control. See the [official YouTube Create AI guide](https://support.google.com/youtube/answer/16631240?hl=en-IN) and [supported countries / device requirements](https://support.google.com/youtube/answer/13952912?hl=en-IN).
 
 This project therefore supports two paths:
 
