@@ -7,6 +7,7 @@ from shorts_agent.main import get_slots
 from shorts_agent.writer import SCENE_COUNT, SCENE_SECONDS, _valid_script, fallback_script
 from shorts_agent.trends import SEED_TOPICS, discover
 from shorts_agent.publish import _truthy
+from shorts_agent.video_api import build_segment_prompts, _video_output, target_seconds
 
 
 def test_fallback_has_twenty_four_second_six_scene_story():
@@ -116,3 +117,48 @@ def test_chart_error_does_not_prevent_recent_shorts_search(monkeypatch):
     topics = discover()
     assert len(search_calls) == 4
     assert any(topic.get("video_id") == "recent-1" for topic in topics)
+
+
+def test_gemini_cloud_video_builds_two_continuous_segments_for_twenty_seconds():
+    script = fallback_script(SEED_TOPICS[0], 1)
+    prompts = build_segment_prompts(script, 20)
+    assert len(prompts) == 2
+    assert prompts[0]["task"] == "text_to_video"
+    assert prompts[1]["task"] == "extend"
+    assert "vertical 9:16" in prompts[0]["input"]
+    assert "seamlessly" in prompts[1]["input"].lower()
+
+
+def test_gemini_cloud_video_builds_three_segments_for_thirty_seconds():
+    script = fallback_script(SEED_TOPICS[0], 1)
+    prompts = build_segment_prompts(script, 30)
+    assert len(prompts) == 3
+    assert [item["task"] for item in prompts] == ["text_to_video", "extend", "extend"]
+
+
+def test_gemini_video_output_parser_supports_raw_interactions_rest_schema():
+    payload = {
+        "steps": [{
+            "type": "model_output",
+            "content": [{
+                "type": "video",
+                "mime_type": "video/mp4",
+                "uri": "https://generativelanguage.googleapis.com/v1beta/files/video-123:download?alt=media",
+            }],
+        }]
+    }
+    result = _video_output(payload)
+    assert result["mime_type"] == "video/mp4"
+    assert "video-123" in result["uri"]
+
+
+@pytest.mark.parametrize("seconds", ["20", "30"])
+def test_gemini_video_duration_configuration(monkeypatch, seconds):
+    monkeypatch.setenv("GEMINI_VIDEO_TARGET_SECONDS", seconds)
+    assert target_seconds() == int(seconds)
+
+
+def test_gemini_video_duration_rejects_unbounded_or_invalid_cost_settings(monkeypatch):
+    monkeypatch.setenv("GEMINI_VIDEO_TARGET_SECONDS", "60")
+    with pytest.raises(ValueError):
+        target_seconds()
