@@ -33,7 +33,36 @@ def discover(limit=20):
         try:
             base = "https://www.googleapis.com/youtube/v3"
             recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=4)).isoformat().replace("+00:00", "Z")
-            # Search for recent short-duration Indian videos, then rank by views/hour.
+
+            # Start with YouTube's current India most-popular chart (broad signals).
+            chart = _get(base + "/videos", {
+                "part": "snippet,statistics,contentDetails",
+                "chart": "mostPopular",
+                "regionCode": region_code,
+                "maxResults": 50,
+                "key": key,
+            })
+            now = dt.datetime.now(dt.timezone.utc)
+            for video in chart.get("items", []):
+                snippet = video.get("snippet", {})
+                published_at = snippet.get("publishedAt")
+                if not published_at:
+                    continue
+                published = dt.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                age_hours = max((now - published).total_seconds() / 3600, 1)
+                statistics = video.get("statistics", {})
+                views = int(statistics.get("viewCount", 0))
+                likes = int(statistics.get("likeCount", 0))
+                score = math.log1p(views / age_hours) + 0.2 * math.log1p(likes)
+                items.append({
+                    "title": str(snippet.get("title", ""))[:160],
+                    "theme": "current YouTube most-popular chart in India; use only as an original idea signal",
+                    "source": "youtube_most_popular_in",
+                    "video_id": video.get("id", ""),
+                    "score": round(score, 2),
+                })
+
+            # Add recent Hindi/Indian Shorts search results for a more niche-specific signal.
             ids = []
             for query in ("hindi comedy shorts", "india funny reels", "indian relatable shorts"):
                 data = _get(base + "/search", {
