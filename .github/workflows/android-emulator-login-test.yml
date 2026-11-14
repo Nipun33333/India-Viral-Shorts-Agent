@@ -1,6 +1,11 @@
 name: Android Emulator - install YouTube Create
 
 on:
+  # Temporary one-time trigger for the higher-memory ANR recovery test.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-emulator-login-test.yml"
   workflow_dispatch:
     inputs:
       session_minutes:
@@ -19,7 +24,7 @@ permissions:
 
 concurrency:
   group: android-emulator-login-test
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   emulator-login:
@@ -74,8 +79,8 @@ jobs:
           target: google_apis_playstore
           arch: x86_64
           cores: 4
-          ram-size: 6144M
-          heap-size: 1024M
+          ram-size: 8192M
+          heap-size: 1536M
           disk-size: 10G
           profile: pixel_7_pro
           avd-name: youtube-create-pixel7pro
@@ -93,6 +98,6 @@ jobs:
         if: always()
         run: |
           echo "YT Create package: com.google.android.apps.youtube.producer" >> "$GITHUB_STEP_SUMMARY"
-          echo "Device profile: Pixel 7 Pro, Android 15, 4 GB RAM" >> "$GITHUB_STEP_SUMMARY"
+          echo "Device profile: Pixel 7 Pro, Android 15, 8 GB RAM, 4 vCPU, 720x1600 display" >> "$GITHUB_STEP_SUMMARY"
           echo "India locale/timezone: en-IN / Asia-Kolkata" >> "$GITHUB_STEP_SUMMARY"
           echo "The watcher taps Install when visible; Google sign-in must be completed by the user if requested." >> "$GITHUB_STEP_SUMMARY"
