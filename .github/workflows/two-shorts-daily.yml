@@ -1,5 +1,10 @@
 name: India Viral Shorts - two daily slots
 on:
+  # One-time validation trigger for the cloud-video backend unit tests.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/two-shorts-daily.yml"
   schedule:
     # GitHub Actions cron is UTC: 04:30 = 10:00 IST; 12:30 = 18:00 IST.
     # GitHub schedules are best-effort and can be delayed.
@@ -33,6 +38,7 @@ concurrency:
 
 jobs:
   create-and-upload:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip-short-test]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
