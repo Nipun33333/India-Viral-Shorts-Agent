@@ -27,9 +27,9 @@ adb shell settings put system system_locales en-IN
 adb shell settings put global time_zone Asia/Kolkata
 adb shell setprop persist.sys.timezone Asia/Kolkata || true
 adb shell am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
-# Lower rendering load on the CI emulator; retain a full-HD portrait screen.
-adb shell wm size 1080x2400 || true
-adb shell wm density 420 || true
+# Reduce UI/GPU workload before Play Store opens.
+adb shell wm size 720x1600 || true
+adb shell wm density 320 || true
 adb shell settings put global window_animation_scale 0 || true
 adb shell settings put global transition_animation_scale 0 || true
 adb shell settings put global animator_duration_scale 0 || true
@@ -80,7 +80,7 @@ echo "VNC password: use the value stored in repository secret EMULATOR_VNC_PASSW
 echo "The Play Store is open on YouTube Create."
 echo "Complete Google sign-in on this remote screen if requested."
 echo "The installer will tap Install when the button becomes visible."
-echo "Device: Pixel 7 Pro | Android 15 | RAM 4 GB | locale en-IN | timezone Asia/Kolkata."
+echo "Device: Pixel 7 Pro | Android 15 | RAM 8 GB | 4 vCPU | 720x1600 | locale en-IN | timezone Asia/Kolkata."
 echo "Session duration: $SESSION_MINUTES minutes."
 echo "============================================================"
 
@@ -108,7 +108,7 @@ def package_installed():
 
 deadline = time.monotonic() + SESSION_MINUTES * 60
 last_tap = 0.0
-last_wait_tap = 0.0
+last_launcher_kill = 0.0
 last_notice = ""
 last_heartbeat = 0.0
 last_labels = []
@@ -154,19 +154,24 @@ while time.monotonic() < deadline:
     last_labels = labels
     joined = " | ".join(labels).lower()
 
-    # Android can repeatedly show a Pixel Launcher ANR while Play Services
-    # is checking account information. Prefer Wait; never close the launcher.
-    if "pixel launcher isn't responding" in joined and wait_bounds and time.monotonic() - last_wait_tap > 12:
-        x1, y1, x2, y2 = wait_bounds
-        x, y = (x1 + x2) // 2, (y1 + y2) // 2
-        print("Pixel Launcher ANR detected; tapping Wait to keep the launcher and Play Store alive.", flush=True)
+    # The Pixel Launcher ANR dialog blocks Play Store interaction.
+    # Stop only the frozen launcher process, then bring Play Store back to front.
+    if "pixel launcher isn't responding" in joined and time.monotonic() - last_launcher_kill > 30:
+        print("Pixel Launcher ANR detected; force-stopping frozen launcher and restoring Play Store (not tapping Wait repeatedly).", flush=True)
         subprocess.run(
-            ["adb", "shell", "input", "tap", str(x), str(y)],
+            ["adb", "shell", "am", "force-stop", "com.google.android.apps.nexuslauncher"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
         )
-        last_wait_tap = time.monotonic()
+        time.sleep(2)
+        subprocess.run(
+            ["adb", "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", f"market://details?id={PACKAGE}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        last_launcher_kill = time.monotonic()
 
     if "checking info" in joined and last_notice != "checking":
         print("GOOGLE_PLAY_CHECKING_INFO: Play Services is checking the Google account; leaving this screen open.", flush=True)
