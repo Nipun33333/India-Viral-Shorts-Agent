@@ -113,16 +113,27 @@ last_notice = ""
 last_heartbeat = 0.0
 last_labels = []
 
+app_launched = False
+
 while time.monotonic() < deadline:
     if package_installed():
-        print("YT_CREATE_INSTALLED=true", flush=True)
-        subprocess.run(
-            ["adb", "shell", "monkey", "-p", PACKAGE, "1"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        break
+        if not app_launched:
+            print("YT_CREATE_INSTALLED=true", flush=True)
+            print("Launching YouTube Create; keeping the remote emulator session open for sign-in and setup.", flush=True)
+            subprocess.run(
+                ["adb", "shell", "monkey", "-p", PACKAGE, "1"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            app_launched = True
+        # Do not exit after install: leave VNC/Cloudflare alive so the user
+        # can interact with YT Create and finish Google sign-in/onboarding.
+        if time.monotonic() - last_heartbeat >= 45:
+            print("YT_CREATE_INSTALLED=true; remote app session is still open.", flush=True)
+            last_heartbeat = time.monotonic()
+        time.sleep(10)
+        continue
 
     try:
         adb("shell", "uiautomator", "dump", "--compressed", "/sdcard/ytcreate-window.xml")
@@ -211,8 +222,11 @@ while time.monotonic() < deadline:
 
     time.sleep(12)
 else:
-    print("YT_CREATE_INSTALLED=false (remote session ended before package installation).", flush=True)
-    print("Final Play Store screen text: " + " | ".join(last_labels[-30:]), flush=True)
+    if not app_launched:
+        print("YT_CREATE_INSTALLED=false (remote session ended before package installation).", flush=True)
+        print("Final Play Store screen text: " + " | ".join(last_labels[-30:]), flush=True)
+    else:
+        print("YT_CREATE_REMOTE_SESSION_FINISHED=true", flush=True)
 PY
 
 echo "YouTube Create install watcher finished."
