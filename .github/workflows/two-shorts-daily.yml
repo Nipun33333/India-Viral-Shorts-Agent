@@ -1,8 +1,5 @@
 name: India Viral Shorts - two daily slots
 on:
-  push:
-    branches:
-      - main
   schedule:
     # GitHub Actions cron is UTC: 04:30 = 10:00 IST; 12:30 = 18:00 IST.
     # GitHub schedules are best-effort and can be delayed.
@@ -69,6 +66,27 @@ jobs:
         run: pip install -r requirements.txt pytest
       - name: Run project tests
         run: python -m pytest -q
+      - name: Check credentials before automatic publishing
+        if: github.event_name == 'schedule' || inputs.publish == true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          missing=0
+          for name in GEMINI_API_KEY YOUTUBE_API_KEY YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required Actions secret is missing: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add the missing secrets under Settings > Secrets and variables > Actions, then run again."
+            exit 1
+          fi
       - name: Run Indian trend-to-Shorts pipeline
         run: python -m shorts_agent.main
       - name: Preserve MP4, Gemini scripts, YouTube Create prompts and publish receipts
