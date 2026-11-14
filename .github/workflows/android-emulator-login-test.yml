@@ -1,6 +1,11 @@
 name: Android Emulator - install YouTube Create
 
 on:
+  # Temporary one-time push trigger for validating the shell fix.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-emulator-login-test.yml"
   workflow_dispatch:
     inputs:
       session_minutes:
@@ -23,6 +28,7 @@ concurrency:
 
 jobs:
   emulator-login:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip-emulator-run]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:
@@ -83,7 +89,7 @@ jobs:
           enable-hw-keyboard: true
           disable-linux-hw-accel: false
           script: |
-            set -Eeuo pipefail
+            set -eu
             echo "Waiting for Android boot..."
             for n in $(seq 1 180); do
               STATE="$(adb get-state 2>/dev/null || true)"
