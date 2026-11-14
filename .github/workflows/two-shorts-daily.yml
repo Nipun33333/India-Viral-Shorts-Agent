@@ -13,11 +13,11 @@ on:
         type: choice
         options: ['1', '2', 'all']
       backend:
-        description: 'gemini_video=cloud AI video; motion=original graphics; manual modes use exported clips'
+        description: 'motion=free graphics; yt_create_manual=join exported YT Create clips; gemini_video=paid cloud video'
         required: true
-        default: 'gemini_video'
+        default: 'motion'
         type: choice
-        options: ['gemini_video', 'motion', 'yt_create_manual', 'flow_manual']
+        options: ['motion', 'yt_create_manual', 'gemini_video', 'flow_manual']
       publish:
         description: 'Upload the manual run to YouTube (private); default is preview only'
         required: true
@@ -50,7 +50,7 @@ jobs:
       CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
       CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
       CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-      VIDEO_BACKEND: ${{ inputs.backend || vars.VIDEO_BACKEND || 'gemini_video' }}
+      VIDEO_BACKEND: ${{ inputs.backend || vars.VIDEO_BACKEND || 'motion' }}
       VIDEO_SLOT: ${{ inputs.slot || 'auto' }}
       AUTO_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
       YOUTUBE_PRIVACY: private
