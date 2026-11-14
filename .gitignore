@@ -10,3 +10,6 @@ secrets/
 client_secret.json
 *refresh_token*
 !.github/workflows/*.yml
+
+# Local signed-in Android device UI snapshots; never publish
+.runtime/
