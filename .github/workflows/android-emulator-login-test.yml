@@ -73,9 +73,9 @@ jobs:
           target: google_apis_playstore
           arch: x86_64
           cores: 2
-          ram-size: 6144M
-          heap-size: 768M
-          disk-size: 12G
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 10G
           profile: pixel_7_pro
           avd-name: youtube-create-pixel7pro
           force-avd-creation: true
@@ -85,13 +85,8 @@ jobs:
           enable-hw-keyboard: true
           disable-linux-hw-accel: false
           script: |
-            adb wait-for-device
-            adb shell getprop sys.boot_completed
-            adb shell settings put system system_locales en-IN
-            adb shell settings put global time_zone Asia/Kolkata
-            adb shell am broadcast -a android.intent.action.LOCALE_CHANGED || true
-            adb shell am start -a android.intent.action.VIEW -d 'market://details?id=com.google.android.apps.youtube.producer'
-            bash -lc 'set -eu; TUNNEL_URL=""; x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass; x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log; websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 & cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 & TUNNEL_PID=$!; cleanup() { kill "$TUNNEL_PID" 2>/dev/null || true; adb emu kill 2>/dev/null || true; }; trap cleanup EXIT; for i in $(seq 1 60); do TUNNEL_URL=$(grep -Eo "https://[a-z0-9-]+[.]trycloudflare[.]com" /tmp/cloudflared.log | head -n 1 || true); if [ -n "$TUNNEL_URL" ]; then break; fi; sleep 2; done; if [ -z "$TUNNEL_URL" ]; then cat /tmp/cloudflared.log; echo "::error::Could not create the temporary screen link."; exit 1; fi; echo "============================================================"; echo "ANDROID EMULATOR SCREEN (temporary link; password required):"; echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"; echo "VNC password: the value saved as repository secret EMULATOR_VNC_PASSWORD"; echo "Play Store is opened on the YouTube Create listing. Install it here if Play Store offers the Install button."; echo "Profile: Pixel 7 Pro; RAM: 6 GB; locale: en-IN; timezone: Asia/Kolkata."; echo "Play Store country is still controlled by your signed-in Google account."; echo "This session stays open for 20 minutes."; echo "============================================================"; waited=0; for n in $(seq 1 120); do if adb shell pm list packages | grep -q 'package:com.google.android.apps.youtube.producer'; then echo "YT_CREATE_INSTALLED=true"; adb shell monkey -p com.google.android.apps.youtube.producer 1 || true; waited=$((n*10)); break; fi; sleep 10; waited=$((n*10)); done; if ! adb shell pm list packages | grep -q 'package:com.google.android.apps.youtube.producer'; then echo "YT_CREATE_INSTALLED=false (Play Store did not complete installation during this session)"; fi; remaining=$((1200-waited)); if [ "$remaining" -gt 0 ]; then sleep "$remaining"; fi'
+            bash -lc 'set -eu; TUNNEL_URL=""; for n in $(seq 1 120); do STATE=$(adb get-state 2>/dev/null || true); BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null || true); if [ "$STATE" = "device" ] && [ "$BOOT" = "1" ]; then break; fi; sleep 2; done; adb shell settings put system system_locales en-IN || true; adb shell settings put global time_zone Asia/Kolkata || true; adb shell am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true; adb shell am start -a android.intent.action.VIEW -d "market://details?id=com.google.android.apps.youtube.producer" || true; sleep 8; x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass; x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log; websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 & cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 & TUNNEL_PID=$!; cleanup() { kill "$TUNNEL_PID" 2>/dev/null || true; adb emu kill 2>/dev/null || true; }; trap cleanup EXIT; for i in $(seq 1 60); do TUNNEL_URL=$(grep -Eo "https://[a-z0-9-]+[.]trycloudflare[.]com" /tmp/cloudflared.log | head -n 1 || true); if [ -n "$TUNNEL_URL" ]; then break; fi; sleep 2; done; if [ -z "$TUNNEL_URL" ]; then cat /tmp/cloudflared.log; echo "::error::Could not create the temporary screen link."; exit 1; fi; echo "============================================================"; echo "ANDROID EMULATOR SCREEN (temporary link; password required):"; echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"; echo "VNC password: the value saved as repository secret EMULATOR_VNC_PASSWORD"; echo "Play Store is opened on the YouTube Create listing. Install it here if Play Store offers the Install button."; echo "Profile: Pixel 7 Pro; RAM: 4 GB; locale: en-IN; timezone: Asia/Kolkata."; echo "Play Store country is controlled by your signed-in Google account."; echo "This session stays open for 20 minutes."; echo "============================================================"; waited=0; for n in $(seq 1 120); do if adb shell pm list packages | grep -q "package:com.google.android.apps.youtube.producer"; then echo "YT_CREATE_INSTALLED=true"; adb shell monkey -p com.google.android.apps.youtube.producer 1 || true; waited=$((n*10)); break; fi; sleep 10; waited=$((n*10)); done; if ! adb shell pm list packages | grep -q "package:com.google.android.apps.youtube.producer"; then echo "YT_CREATE_INSTALLED=false (Play Store did not complete installation during this session)"; fi; remaining=$((1200-waited)); if [ "$remaining" -gt 0 ]; then sleep "$remaining"; fi'
+
 
       - name: Capture emulator diagnostics on failure
         if: failure()
