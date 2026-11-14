@@ -1,6 +1,6 @@
 # India Viral Shorts AI Agent
 
-A scheduled India-focused Shorts pipeline. It discovers public YouTube trend signals, uses Gemini to write an original Hindi/Hinglish story, renders a 24-second vertical MP4, validates the output, and can upload it to YouTube through the official Data API.
+A scheduled India-focused cloud Shorts pipeline. It discovers public YouTube trend signals, uses Gemini to write an original Hindi/Hinglish story, can generate cinematic 9:16 video through the Gemini Omni API, renders and validates an MP4, then can upload privately through the official YouTube Data API.
 
 ## Automated daily workflow
 
@@ -10,11 +10,47 @@ For each slot, the agent:
 1. Searches recent public Indian YouTube videos through the official YouTube Data API when a key is configured.
 2. Uses the topics only as broad trend signals. It does not download, copy, remix or re-upload other creators' videos or audio.
 3. Uses Gemini to write an original six-scene Hindi/Hinglish story and three optional YouTube Create prompts.
-4. Renders a 24-second, 9:16 MP4 with original motion graphics, captions and Hindi voice-over (or a silent audio track if TTS is unavailable).
+4. Uses the selected video backend: Gemini Omni cloud video generation, or the no-video-API motion-graphics fallback. It renders a 9:16 MP4 and adds Hindi narration.
 5. Validates that the MP4 is portrait, at least 720x1280, has audio, and is 20-30 seconds long.
 6. Uploads to YouTube as **private** when the YouTube OAuth secrets are configured. The scheduled workflow is automatic; no manual Run workflow click is required.
 
-The default automatic backend is an original motion-graphics renderer. It does not claim to be a cinematic video generator. Uploads remain private for review; do not switch to public until you have reviewed the generated content and metadata.
+The scheduled workflow defaults to motion graphics so that paid video-generation calls are never enabled unexpectedly. To run a fully generated cloud-video pipeline, select `gemini_video` manually or set the repository variable `VIDEO_BACKEND=gemini_video`. Uploads remain private for review; do not switch to public until you have reviewed the generated content and metadata.
+
+## Fully cloud AI video generation
+
+The cloud backend uses Google's **Gemini Omni 1.1 Flash** Interactions API directly. It does not open or automate the YouTube Create Android app, and it requires no phone, emulator, USB cable, persistent Android login, or device session.
+
+For each Short, the pipeline:
+1. Writes an original six-scene Hindi/Hinglish script from Indian trend signals.
+2. Requests an initial 10-second vertical 9:16 video from Gemini Omni.
+3. Extends that same video in another 10-second turn, preserving the characters and scene continuity. A 20-second Short uses two generation turns; a 30-second Short uses three.
+4. Normalizes the generated MP4 to 720x1280 portrait, 24 fps, mixes generated ambience with Hindi TTS narration, validates 20/30 seconds, and marks synthetic media disclosure.
+5. Uploads privately using the existing YouTube OAuth refresh-token flow.
+
+### Enable cloud generation
+
+Add the existing `GEMINI_API_KEY` under **Settings → Secrets and variables → Actions → Secrets**. Gemini Omni video generation is a paid-tier API capability.
+
+For a manual test, open **Actions → India Viral Shorts - two daily slots → Run workflow** and select `gemini_video`. Keep `publish` unchecked for a private local artifact preview (no YouTube upload).
+
+To enable scheduled cloud video generation, add the repository variable under **Settings → Secrets and variables → Actions → Variables**:
+
+- `VIDEO_BACKEND` = `gemini_video`
+- Optional: `GEMINI_VIDEO_TARGET_SECONDS` = `20` or `30` (default 20)
+- Optional: `GEMINI_VIDEO_MODEL` = `gemini-omni-1.1-flash`
+
+The scheduled jobs remain on the motion backend until `VIDEO_BACKEND` is explicitly set to `gemini_video`, to avoid unexpected paid API charges.
+
+### Video generation cost
+
+Google currently lists Gemini Omni 1.1 Flash video output at an effective price of approximately **US$0.10 per generated second at 720p**. Approximate video-generation charges, excluding script tokens, YouTube API, GitHub Actions and any taxes:
+
+| Output length | Approx. per Short | Two Shorts/day for 30 days |
+|---|---:|---:|
+| 20 seconds | US$2.00 | US$120 |
+| 30 seconds | US$3.00 | US$180 |
+
+Actual charges depend on output duration and API billing. Start with a single manual 20-second run and check Google AI Studio usage before enabling the daily schedule. [Official Gemini Omni docs](https://ai.google.dev/gemini-api/docs/omni) · [Official pricing](https://ai.google.dev/gemini-api/docs/pricing).
 
 ## YouTube Create app and Gemini Omni
 
@@ -22,7 +58,7 @@ YouTube Create is available in India. Google lists supported Android phones with
 
 This project therefore supports two paths:
 
-- **Fully scheduled path — motion:** the GitHub workflow generates and uploads its own 24-second original animated Short automatically. This is the default.
+- **Cloud video path — gemini_video:** Gemini Omni generates and extends a real video in the cloud; FFmpeg adds Hindi narration and formats the final 20/30-second Short. Enable it with the manual backend option or the repository variable described above.
 - **YouTube Create-assisted path — yt_create_manual:** Gemini writes three 8-second shot prompts into the output artifact. Paste them into YouTube Create's Generate video feature if it is enabled on your account, export the three clips, then provide those MP4 files to this repository. The agent normalizes, joins, adds Hindi narration, validates and uploads the finished Short.
 
 For the manual YouTube Create path, save the exported clips in the repository before running the workflow:
@@ -62,7 +98,7 @@ The YouTube API upload explicitly sets privacy to private by default and sets th
 
 Open **Actions → India Viral Shorts - two daily slots → Run workflow**:
 - Choose slot 1, slot 2, or all.
-- Choose motion for a fully automatic generated preview, or yt_create_manual for three MP4s exported from YouTube Create.
+- Choose gemini_video for paid cloud-generated video, motion for no-video-API motion graphics, or yt_create_manual for three MP4s exported from YouTube Create.
 - Keep publish unchecked for a preview. Manual runs do not upload unless you explicitly check publish.
 
 The scheduled runs publish automatically as private when YouTube OAuth is configured. If the credentials are missing, the workflow still creates the MP4 and prompt files and records that upload was skipped.
@@ -90,6 +126,6 @@ Output files are written to output/YYYY-MM-DD/slot1/ and slot2/. Each slot inclu
 - The agent creates new stories. It must not download or reproduce viral creators' actual clips, dialogue, faces, music or edits.
 - YouTube Create does not currently expose a supported public editor API for unattended automation; its prompts and clip exports are therefore a manual optional stage.
 - Gemini Omni inside YouTube Create is available only to selected creators; availability of the app does not guarantee access to its generative video tools.
-- No paid Veo/video-generation API is called by the default workflow.
+- Paid Gemini Omni video-generation calls are only made when the gemini_video backend is selected. The scheduled workflow defaults to motion until VIDEO_BACKEND=gemini_video is explicitly configured.
 - YouTube uploads stay private by default. Review before making content public.
 - GitHub scheduled runs are best-effort. Instagram publishing is optional and immediate if all Instagram secrets are configured.
