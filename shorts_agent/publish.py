@@ -1,4 +1,4 @@
-"""Upload own content to YouTube Shorts and Instagram Reels using official APIs."""
+"""Publish original Shorts using official YouTube and Meta APIs."""
 import os
 import time
 from pathlib import Path
@@ -6,9 +6,13 @@ from pathlib import Path
 import requests
 
 
-def youtube_upload(video, script):
+def _truthy(value):
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def youtube_upload(video, script, contains_synthetic_media=False):
     needed = ("YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN")
-    if not all(os.getenv(x) for x in needed):
+    if not all(os.getenv(name) for name in needed):
         print("SKIP YouTube: OAuth secrets are not configured.")
         return None
 
@@ -17,7 +21,7 @@ def youtube_upload(video, script):
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaFileUpload
 
-    creds = Credentials(
+    credentials = Credentials(
         None,
         refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"],
         token_uri="https://oauth2.googleapis.com/token",
@@ -25,34 +29,51 @@ def youtube_upload(video, script):
         client_secret=os.environ["YOUTUBE_CLIENT_SECRET"],
         scopes=["https://www.googleapis.com/auth/youtube.upload"],
     )
-    creds.refresh(Request())
-    client = build("youtube", "v3", credentials=creds, cache_discovery=False)
-    upload_request = client.videos().insert(
+    credentials.refresh(Request())
+    client = build("youtube", "v3", credentials=credentials, cache_discovery=False)
+
+    title = str(script.get("title") or "India Hindi Short")[:90]
+    if "#Shorts" not in title and "#Shorts" not in str(script.get("description", "")):
+        title = f"{title} #Shorts"[:100]
+    description = str(script.get("description") or "#Shorts #India #Hindi")
+    if "#Shorts" not in description and "#Shorts" not in title:
+        description = description.rstrip() + "\n\n#Shorts"
+    description = description[:4900]
+
+    synthetic_disclosure = (
+        bool(contains_synthetic_media)
+        or _truthy(os.getenv("YOUTUBE_CONTAINS_SYNTHETIC_MEDIA", "false"))
+    )
+    request = client.videos().insert(
         part="snippet,status",
         body={
             "snippet": {
-                "title": script["title"][:100],
-                "description": script["description"],
+                "title": title,
+                "description": description,
+                "tags": ["Shorts", "India", "Hindi", "Hinglish", "original"],
                 "categoryId": "24",
+                "defaultLanguage": "hi",
             },
             "status": {
                 "privacyStatus": os.getenv("YOUTUBE_PRIVACY", "private"),
                 "selfDeclaredMadeForKids": False,
+                "containsSyntheticMedia": synthetic_disclosure,
             },
         },
         media_body=MediaFileUpload(
-            str(video), mimetype="video/mp4", resumable=True,
+            str(video),
+            mimetype="video/mp4",
+            resumable=True,
             chunksize=5 * 1024 * 1024,
         ),
     )
     result = None
     while result is None:
-        _, result = upload_request.next_chunk()
+        _, result = request.next_chunk()
     video_id = result["id"]
-    print(
-        f"YouTube uploaded as {os.getenv('YOUTUBE_PRIVACY', 'private')}: "
-        f"https://youtu.be/{video_id}"
-    )
+    privacy = os.getenv("YOUTUBE_PRIVACY", "private")
+    print(f"YouTube uploaded as {privacy}: https://youtu.be/{video_id}")
+    print(f"Altered/synthetic-media disclosure set to: {synthetic_disclosure}")
     return video_id
 
 
@@ -61,7 +82,7 @@ def instagram_upload(video, script):
         "IG_USER_ID", "IG_ACCESS_TOKEN", "CLOUDINARY_CLOUD_NAME",
         "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET",
     )
-    if not all(os.getenv(x) for x in needed):
+    if not all(os.getenv(name) for name in needed):
         print("SKIP Instagram: IG professional-account token + Cloudinary credentials required.")
         return None
 
@@ -82,7 +103,7 @@ def instagram_upload(video, script):
     base = f"https://graph.facebook.com/{os.getenv('META_GRAPH_VERSION', 'v24.0')}"
     token = os.environ["IG_ACCESS_TOKEN"]
     user = os.environ["IG_USER_ID"]
-    caption = f"{script['title']}\n\n{script['description']}"[:2100]
+    caption = f"{script.get('title', '')}\n\n{script.get('description', '')}"[:2100]
 
     response = requests.post(
         f"{base}/{user}/media",
@@ -128,14 +149,17 @@ def instagram_upload(video, script):
     return media_id
 
 
-def publish(video: Path, script: dict):
+def publish(video: Path, script: dict, contains_synthetic_media=False):
     if os.getenv("AUTO_PUBLISH", "true").lower() not in ("true", "1", "yes"):
         print("AUTO_PUBLISH=false: only rendered preview; no publishing.")
         return {}
 
     results = {}
     errors = []
-    for name, upload in (("youtube", youtube_upload), ("instagram", instagram_upload)):
+    for name, upload in (
+        ("youtube", lambda path, data: youtube_upload(path, data, contains_synthetic_media)),
+        ("instagram", instagram_upload),
+    ):
         try:
             results[name] = upload(video, script)
         except Exception as exc:
