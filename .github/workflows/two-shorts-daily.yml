@@ -50,7 +50,7 @@ jobs:
       CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
       CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
       CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-      VIDEO_BACKEND: ${{ inputs.backend || vars.VIDEO_BACKEND || 'motion' }}
+      VIDEO_BACKEND: ${{ inputs.backend || vars.VIDEO_BACKEND || 'gemini_video' }}
       VIDEO_SLOT: ${{ inputs.slot || 'auto' }}
       AUTO_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
       YOUTUBE_PRIVACY: private
