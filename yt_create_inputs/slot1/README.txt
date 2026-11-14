@@ -1,0 +1,1 @@
+Place three YouTube Create MP4 exports here as shot_1.mp4, shot_2.mp4 and shot_3.mp4 (about 8 seconds each, portrait 9:16).
