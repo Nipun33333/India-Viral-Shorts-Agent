@@ -16,6 +16,27 @@ For each slot, the agent:
 
 The scheduled workflow now defaults to paid Gemini Omni cloud-video generation. To disable per-second video charges and use the motion-graphics fallback, set the repository variable `VIDEO_BACKEND=motion`. Uploads remain private for review; do not switch to public until you have reviewed the generated content and metadata.
 
+## Free interactive YouTube Create Android session (GitHub Actions)
+
+This repository also provides a temporary Android 15 / Google Play emulator on a standard GitHub-hosted runner. For this public repository, standard hosted runners are free. Each workflow run creates a **fresh disposable VM**, so Google sign-in and app state do not persist into the next run.
+
+### One-time setup
+
+1. Open **Settings → Secrets and variables → Actions → Secrets**.
+2. Add `EMULATOR_VNC_PASSWORD` with a random password of at least 16 characters. This protects the remote VNC screen; do not put it in chat or commit it.
+3. Open **Actions → Android Emulator - install YouTube Create → Run workflow**.
+4. Choose session duration (20, 30, 45, or 60 minutes), then start the workflow.
+5. Open the job logs and find **YT CREATE INSTALL SESSION IS READY**. Open the noVNC URL from that log and enter the VNC password stored in the secret.
+6. Complete Google Play sign-in yourself if requested. The installer taps the YouTube Create Install button when it appears. After installation it launches YouTube Create and leaves the remote session open until the timer expires.
+
+### Important limitations
+
+- This is an interactive cloud session, not a permanently hosted Android phone. The emulator is destroyed when the workflow finishes.
+- Google sign-in must be completed again in each new emulator session. Do not try to preserve an Android login by uploading AVD snapshots, cookies, or app session tokens to artifacts or GitHub cache.
+- The current workflow installs and opens YouTube Create; it does **not yet automatically press Generate, create clips, export a video, or upload it**. Those UI steps must be implemented against the actual signed-in screens available on your account. The next step is to capture the app's visible controls during the session and then build/test the Appium automation.
+- Access is limited by the workflow's session timer. The Actions link and temporary VNC URL should be treated as private while the session is active.
+- Keep the repository and workflow trusted. Do not add unknown third-party Actions or expose authentication material in logs.
+
 ## Fully cloud AI video generation
 
 The cloud backend uses Google's **Gemini Omni 1.1 Flash** Interactions API directly. It does not open or automate the YouTube Create Android app, and it requires no phone, emulator, USB cable, persistent Android login, or device session.
