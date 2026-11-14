@@ -53,6 +53,7 @@ jobs:
       YOUTUBE_PRIVACY: private
       TTS_BACKEND: auto
       TRENDS_REGION: IN
+      ENABLE_INSTAGRAM_PUBLISH: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
