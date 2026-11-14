@@ -9,7 +9,7 @@ The GitHub Actions workflow is scheduled for **10:00 AM and 6:00 PM India time**
 For each slot, the agent:
 1. Searches recent public Indian YouTube videos through the official YouTube Data API when a key is configured.
 2. Uses the topics only as broad trend signals. It does not download, copy, remix or re-upload other creators' videos or audio.
-3. Uses Gemini to write an original six-scene Hindi/Hinglish story and three optional YouTube Create prompts.
+3. Uses Gemini to write an original six-scene Hindi/Hinglish story. YouTube Create prompts are retained only for the optional manual export backend.
 4. Uses the selected video backend: Gemini Omni cloud video generation, or the no-video-API motion-graphics fallback. It renders a 9:16 MP4 and adds Hindi narration.
 5. Validates that the MP4 is portrait, at least 720x1280, has audio, and is 20-30 seconds long.
 6. Uploads to YouTube as **private** when the YouTube OAuth secrets are configured. The scheduled workflow is automatic; no manual Run workflow click is required.
@@ -68,9 +68,7 @@ For the manual YouTube Create path, save the exported clips in the repository be
 
 Each clip should be about 8 seconds and portrait. Choose the yt_create_manual backend in Actions. The final joined video is about 24 seconds. Generated clips are marked as containing synthetic media in the YouTube upload metadata.
 
-The one-time Android screen workflow creates a Pixel 7 Pro hardware profile with 6 GB RAM, sets Android's locale to en-IN and timezone to Asia/Kolkata, and opens the Play Store listing for YouTube Create. This improves the emulator's declared hardware profile; it does **not** turn an emulator into a certified physical phone or bypass Play Integrity. The Google Play country is tied to the signed-in Google account's Play country/profile, not just the device's locale or timezone. If Play Store still says the device is incompatible, use a supported physical Android phone; do not spoof device integrity or bypass Google's compatibility checks.
-
-Google account sign-in and any YouTube Create UI actions remain manual. Never put Google passwords, one-time codes, OAuth tokens or VNC passwords in the repository or in chat.
+This cloud workflow does not install, sign in to, or control the YouTube Create Android app. No phone or persistent Android session is required.
 
 ## GitHub secrets
 
