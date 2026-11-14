@@ -1,6 +1,9 @@
 name: Android Emulator - one-time Google login test
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
