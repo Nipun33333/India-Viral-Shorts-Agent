@@ -23,18 +23,33 @@ def _get(url, params):
     return response.json()
 
 
+def _score_video(video, now):
+    snippet = video.get("snippet", {})
+    published_at = snippet.get("publishedAt")
+    if not published_at:
+        return None
+    published = dt.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+    age_hours = max((now - published).total_seconds() / 3600, 1)
+    statistics = video.get("statistics", {})
+    views = int(statistics.get("viewCount", 0))
+    likes = int(statistics.get("likeCount", 0))
+    return round(math.log1p(views / age_hours) + 0.2 * math.log1p(likes), 2)
+
+
 def discover(limit=20):
-    """Official YouTube API, not a 'trending Reels' API. Seed/manual fallback."""
+    """Use the official India popular chart and current Hindi/Indian search signals."""
     items = []
     key = os.getenv("YOUTUBE_API_KEY", "").strip()
     region_code = os.getenv("TRENDS_REGION", "IN").strip().upper() or "IN"
     language = os.getenv("TRENDS_LANGUAGE", "hi").strip().lower() or "hi"
-    if key:
-        try:
-            base = "https://www.googleapis.com/youtube/v3"
-            recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=4)).isoformat().replace("+00:00", "Z")
 
-            # Start with YouTube's current India most-popular chart (broad signals).
+    if key:
+        base = "https://www.googleapis.com/youtube/v3"
+        now = dt.datetime.now(dt.timezone.utc)
+        recent = (now - dt.timedelta(days=4)).isoformat().replace("+00:00", "Z")
+
+        # Chart and search are independent: a chart-region/API error must not stop search.
+        try:
             chart = _get(base + "/videos", {
                 "part": "snippet,statistics,contentDetails",
                 "chart": "mostPopular",
@@ -42,59 +57,92 @@ def discover(limit=20):
                 "maxResults": 50,
                 "key": key,
             })
-            now = dt.datetime.now(dt.timezone.utc)
             for video in chart.get("items", []):
-                snippet = video.get("snippet", {})
-                published_at = snippet.get("publishedAt")
-                if not published_at:
+                score = _score_video(video, now)
+                if score is None:
                     continue
-                published = dt.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-                age_hours = max((now - published).total_seconds() / 3600, 1)
-                statistics = video.get("statistics", {})
-                views = int(statistics.get("viewCount", 0))
-                likes = int(statistics.get("likeCount", 0))
-                score = math.log1p(views / age_hours) + 0.2 * math.log1p(likes)
+                snippet = video.get("snippet", {})
                 items.append({
                     "title": str(snippet.get("title", ""))[:160],
-                    "theme": "current YouTube most-popular chart in India; use only as an original idea signal",
+                    "theme": "current YouTube most-popular chart in India; original idea signal only",
                     "source": "youtube_most_popular_in",
-                    "video_id": video.get("id", ""),
-                    "score": round(score, 2),
+                    "video_id": str(video.get("id", "")),
+                    "score": score,
                 })
+        except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+            print(f"India most-popular chart unavailable; trying search results: {exc}")
 
-            # Add recent Hindi/Indian Shorts search results for a more niche-specific signal.
+        try:
             ids = []
-            for query in ("hindi comedy shorts", "india funny reels", "indian relatable shorts"):
+            queries = (
+                "hindi comedy shorts",
+                "india funny shorts",
+                "indian relatable shorts",
+                "india trending shorts",
+            )
+            for query in queries:
                 data = _get(base + "/search", {
-                    "part": "snippet", "type": "video", "regionCode": region_code,
-                    "relevanceLanguage": language, "videoDuration": "short",
-                    "order": "viewCount", "publishedAfter": recent,
-                    "maxResults": 20, "q": query, "key": key,
+                    "part": "snippet",
+                    "type": "video",
+                    "regionCode": region_code,
+                    "relevanceLanguage": language,
+                    "videoDuration": "short",
+                    "order": "viewCount",
+                    "publishedAfter": recent,
+                    "maxResults": 20,
+                    "q": query,
+                    "key": key,
                 })
-                ids.extend(v["id"]["videoId"] for v in data.get("items", []) if v.get("id", {}).get("videoId"))
+                ids.extend(
+                    value["id"]["videoId"]
+                    for value in data.get("items", [])
+                    if value.get("id", {}).get("videoId")
+                )
             ids = list(dict.fromkeys(ids))[:50]
             if ids:
-                response = _get(base + "/videos", {"part": "snippet,statistics,contentDetails", "id": ",".join(ids), "key": key})
-                now = dt.datetime.now(dt.timezone.utc)
-                for v in response.get("items", []):
-                    sn = v["snippet"]
-                    published = dt.datetime.fromisoformat(sn["publishedAt"].replace("Z", "+00:00"))
-                    age_hours = max((now - published).total_seconds() / 3600, 1)
-                    views = int(v.get("statistics", {}).get("viewCount", 0))
-                    likes = int(v.get("statistics", {}).get("likeCount", 0))
-                    # This is only a trend signal: not proof that a specific video is a Short.
-                    score = math.log1p(views / age_hours) + 0.2 * math.log1p(likes)
-                    items.append({"title": sn["title"][:160], "theme": "inspired by public Indian YouTube trends", "source": "youtube", "video_id": v["id"], "score": round(score, 2)})
-        except (requests.RequestException, ValueError, KeyError) as e:
-            print(f"Trend API unavailable; continuing with curated ideas: {e}")
+                result = _get(base + "/videos", {
+                    "part": "snippet,statistics,contentDetails",
+                    "id": ",".join(ids),
+                    "key": key,
+                })
+                for video in result.get("items", []):
+                    score = _score_video(video, now)
+                    if score is None:
+                        continue
+                    snippet = video.get("snippet", {})
+                    items.append({
+                        "title": str(snippet.get("title", ""))[:160],
+                        "theme": "recent Indian YouTube Shorts search signal; original idea only",
+                        "source": "youtube_recent_search",
+                        "video_id": str(video.get("id", "")),
+                        "score": score,
+                    })
+        except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+            print(f"Recent India Shorts search unavailable; continuing with other signals: {exc}")
+
     manual = ROOT / "manual_trends.json"
     if manual.exists():
         try:
             for title in json.loads(manual.read_text(encoding="utf-8")):
                 if isinstance(title, str) and title.strip():
-                    items.append({"title": title[:160], "theme": "manually supplied Indian trend", "source": "manual", "score": 15})
-        except (ValueError, OSError) as e:
-            print(f"manual_trends.json invalid: {e}")
-    items.sort(key=lambda x: x.get("score", 0), reverse=True)
-    items.extend(SEED_TOPICS)
-    return items[:limit]
+                    items.append({
+                        "title": title[:160],
+                        "theme": "manually supplied Indian trend",
+                        "source": "manual",
+                        "score": 0.5,
+                    })
+        except (ValueError, OSError) as exc:
+            print(f"manual_trends.json invalid: {exc}")
+
+    # Keep each public video once and prefer the strongest current signal.
+    deduplicated = {}
+    for item in items:
+        video_id = item.get("video_id")
+        key_id = f"video:{video_id}" if video_id else f"{item.get('source')}:{item.get('title')}"
+        previous = deduplicated.get(key_id)
+        if previous is None or item.get("score", 0) > previous.get("score", 0):
+            deduplicated[key_id] = item
+
+    ranked = sorted(deduplicated.values(), key=lambda item: item.get("score", 0), reverse=True)
+    ranked.extend(SEED_TOPICS)
+    return ranked[:limit]
