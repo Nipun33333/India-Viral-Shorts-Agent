@@ -1,7 +1,23 @@
-name: Android Emulator - one-time Google login test
+name: Android Emulator - install YouTube Create
 
 on:
   workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: "How long to keep the remote emulator open"
+        required: true
+        type: choice
+        default: "45"
+        options:
+          - "20"
+          - "30"
+          - "45"
+          - "60"
+  # Temporary one-time trigger so this repair can be tested immediately.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-emulator-login-test.yml"
 
 permissions:
   contents: read
@@ -12,19 +28,20 @@ concurrency:
 
 jobs:
   emulator-login:
-    # Standard GitHub-hosted runners may not expose usable nested virtualization.
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip-emulator-run]') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 80
     env:
       EMULATOR_VNC_PASSWORD: ${{ secrets.EMULATOR_VNC_PASSWORD }}
-      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: '120'
+      SESSION_MINUTES: ${{ inputs.session_minutes || '45' }}
+      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "120"
 
     steps:
       - name: Check VNC password secret
         shell: bash
         run: |
-          if [ -z "${EMULATOR_VNC_PASSWORD}" ]; then
-            echo "::error::Add the repository secret EMULATOR_VNC_PASSWORD before running this workflow."
+          if [ -z "$EMULATOR_VNC_PASSWORD" ]; then
+            echo "::error::Add repository secret EMULATOR_VNC_PASSWORD before running this workflow."
             exit 1
           fi
           if [ "${#EMULATOR_VNC_PASSWORD}" -lt 16 ]; then
@@ -38,9 +55,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           sudo chmod 666 /dev/kvm
-          echo "KVM device:"
           ls -l /dev/kvm
-          echo "CPU virtualization flags:"
           grep -E -m1 '(vmx|svm)' /proc/cpuinfo
 
       - name: Install virtual display and remote-screen tools
@@ -50,23 +65,12 @@ jobs:
           Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
-      - name: Restore Android Virtual Device cache
-        id: avd-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-youtube-create-pixel7pro-api35-ubuntu24-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: |
-            avd-youtube-create-pixel7pro-api35-ubuntu24-
-
       - name: Install Cloudflare Tunnel
         run: |
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
           sudo dpkg -i /tmp/cloudflared.deb
 
-      - name: Boot Play Store emulator and open temporary secure screen
+      - name: Boot Android 15 Play Store emulator and install YT Create
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -85,26 +89,124 @@ jobs:
           enable-hw-keyboard: true
           disable-linux-hw-accel: false
           script: |
-            bash -lc 'set -eu; TUNNEL_URL=""; for n in $(seq 1 120); do STATE=$(adb get-state 2>/dev/null || true); BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null || true); if [ "$STATE" = "device" ] && [ "$BOOT" = "1" ]; then break; fi; sleep 2; done; adb shell settings put system system_locales en-IN || true; adb shell settings put global time_zone Asia/Kolkata || true; adb shell am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true; adb shell am start -a android.intent.action.VIEW -d "market://details?id=com.google.android.apps.youtube.producer" || true; sleep 8; x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass; x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log; websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 & cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 & TUNNEL_PID=$!; cleanup() { kill "$TUNNEL_PID" 2>/dev/null || true; adb emu kill 2>/dev/null || true; }; trap cleanup EXIT; for i in $(seq 1 60); do TUNNEL_URL=$(grep -Eo "https://[a-z0-9-]+[.]trycloudflare[.]com" /tmp/cloudflared.log | head -n 1 || true); if [ -n "$TUNNEL_URL" ]; then break; fi; sleep 2; done; if [ -z "$TUNNEL_URL" ]; then cat /tmp/cloudflared.log; echo "::error::Could not create the temporary screen link."; exit 1; fi; echo "============================================================"; echo "ANDROID EMULATOR SCREEN (temporary link; password required):"; echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"; echo "VNC password: the value saved as repository secret EMULATOR_VNC_PASSWORD"; echo "Play Store is opened on the YouTube Create listing. Install it here if Play Store offers the Install button."; echo "Profile: Pixel 7 Pro; RAM: 4 GB; locale: en-IN; timezone: Asia/Kolkata."; echo "Play Store country is controlled by your signed-in Google account."; echo "This session stays open for 20 minutes."; echo "============================================================"; waited=0; for n in $(seq 1 120); do if adb shell pm list packages | grep -q "package:com.google.android.apps.youtube.producer"; then echo "YT_CREATE_INSTALLED=true"; adb shell monkey -p com.google.android.apps.youtube.producer 1 || true; waited=$((n*10)); break; fi; sleep 10; waited=$((n*10)); done; if ! adb shell pm list packages | grep -q "package:com.google.android.apps.youtube.producer"; then echo "YT_CREATE_INSTALLED=false (Play Store did not complete installation during this session)"; fi; remaining=$((1200-waited)); if [ "$remaining" -gt 0 ]; then sleep "$remaining"; fi'
+            set -Eeuo pipefail
+            echo "Waiting for Android boot..."
+            for n in $(seq 1 180); do
+              STATE="$(adb get-state 2>/dev/null || true)"
+              BOOT="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              if [ "$STATE" = "device" ] && [ "$BOOT" = "1" ]; then break; fi
+              sleep 2
+            done
+            if [ "$(adb get-state 2>/dev/null || true)" != "device" ] || [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)" != "1" ]; then
+              echo "::error::Android emulator did not finish booting."
+              adb devices -l || true
+              exit 1
+            fi
 
+            adb shell settings put system system_locales en-IN
+            adb shell settings put global time_zone Asia/Kolkata
+            adb shell am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
+            adb shell am start -a android.intent.action.VIEW -d "market://details?id=com.google.android.apps.youtube.producer"
+            sleep 8
 
-      - name: Capture emulator diagnostics on failure
-        if: failure()
-        run: |
-          echo "AVD cache hit: ${{ steps.avd-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "KVM device:"
-          ls -l /dev/kvm || true
-          echo "Virtualization flags:"
-          grep -E -m1 '(vmx|svm)' /proc/cpuinfo || true
-          echo "Xvfb log:"
-          cat /tmp/xvfb.log || true
-          echo "Emulator processes:"
-          pgrep -af emulator || true
-          echo "ADB devices:"
-          adb devices -l || true
+            x11vnc -storepasswd "$EMULATOR_VNC_PASSWORD" /tmp/x11vnc.pass
+            x11vnc -display :99 -rfbauth /tmp/x11vnc.pass -forever -shared -rfbport 5900 -bg -o /tmp/x11vnc.log
+            websockify --web=/usr/share/novnc/ 6080 localhost:5900 >/tmp/websockify.log 2>&1 &
+            cloudflared tunnel --no-autoupdate --url http://localhost:6080 >/tmp/cloudflared.log 2>&1 &
+            TUNNEL_PID=$!
+            cleanup() {
+              kill "$TUNNEL_PID" 2>/dev/null || true
+              adb emu kill 2>/dev/null || true
+            }
+            trap cleanup EXIT
 
-      - name: Report cache status
+            TUNNEL_URL=""
+            for i in $(seq 1 60); do
+              TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+[.]trycloudflare[.]com' /tmp/cloudflared.log | head -n 1 || true)"
+              [ -n "$TUNNEL_URL" ] && break
+              sleep 2
+            done
+            if [ -z "$TUNNEL_URL" ]; then
+              cat /tmp/cloudflared.log
+              echo "::error::Could not create temporary emulator screen link."
+              exit 1
+            fi
+
+            echo "============================================================"
+            echo "YT CREATE INSTALL SESSION IS READY"
+            echo "$TUNNEL_URL/vnc.html?autoconnect=true&resize=remote"
+            echo "Enter the password stored in repository secret EMULATOR_VNC_PASSWORD."
+            echo "The Play Store is already open on YouTube Create."
+            echo "If Google asks you to sign in, complete that on the remote screen."
+            echo "The installer will automatically tap Install when it becomes available."
+            echo "Device: Pixel 7 Pro | Android 15 | RAM 4 GB | India locale/timezone."
+            echo "Session duration after boot: $SESSION_MINUTES minutes."
+            echo "============================================================"
+
+            cat > /tmp/ytcreate_install_watch.py <<'PY'
+            import subprocess, time, re, xml.etree.ElementTree as ET
+
+            PACKAGE = "com.google.android.apps.youtube.producer"
+            def cmd(*args):
+                return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout
+
+            deadline = time.monotonic() + int(__import__("os").environ.get("SESSION_MINUTES", "45")) * 60
+            last_tap = 0
+            last_notice = ""
+            installed = False
+
+            while time.monotonic() < deadline:
+                if PACKAGE in cmd("adb", "shell", "pm", "list", "packages"):
+                    installed = True
+                    print("YT_CREATE_INSTALLED=true", flush=True)
+                    subprocess.run(["adb", "shell", "monkey", "-p", PACKAGE, "1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    break
+
+                cmd("adb", "shell", "uiautomator", "dump", "/sdcard/ytcreate-window.xml")
+                xml = cmd("adb", "shell", "cat", "/sdcard/ytcreate-window.xml")
+                labels = []
+                try:
+                    root = ET.fromstring(xml)
+                    for node in root.iter():
+                        label = (node.attrib.get("text", "") + " " + node.attrib.get("content-desc", "")).strip()
+                        if label:
+                            labels.append(label)
+                        if label.strip().lower() == "install" and time.monotonic() - last_tap > 15:
+                            match = re.search(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
+                            if match:
+                                x1, y1, x2, y2 = map(int, match.groups())
+                                x, y = (x1 + x2) // 2, (y1 + y2) // 2
+                                print(f"Play Store Install button found; tapping at {x},{y}.", flush=True)
+                                subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)], check=False)
+                                last_tap = time.monotonic()
+                                break
+                except ET.ParseError:
+                    pass
+
+                joined = " | ".join(labels).lower()
+                if "sign in" in joined and last_notice != "signin":
+                    print("WAITING_FOR_GOOGLE_SIGN_IN: Sign in on the remote emulator screen; the install watcher will continue automatically.", flush=True)
+                    last_notice = "signin"
+                if ("isn't compatible" in joined or "not compatible" in joined or "not available for your device" in joined) and last_notice != "compat":
+                    print("PLAY_STORE_COMPATIBILITY_WARNING: " + " | ".join(labels[-20:]), flush=True)
+                    last_notice = "compat"
+
+                if int(time.monotonic()) % 60 < 8:
+                    print("Still waiting for YT Create installation or Google Play sign-in...", flush=True)
+                time.sleep(8)
+
+            if not installed:
+                print("YT_CREATE_INSTALLED=false (session ended before package installation).", flush=True)
+                print("Final Play Store screen text: " + " | ".join(labels[-30:]), flush=True)
+            PY
+
+            python3 /tmp/ytcreate_install_watch.py
+            echo "Emulator screen session finished."
+
+      - name: Report install outcome
         if: always()
         run: |
-          echo "AVD cache hit: ${{ steps.avd-cache.outputs.cache-hit }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "This is a one-time interactive login/cache experiment. It does not modify the Shorts publishing workflow." >> "$GITHUB_STEP_SUMMARY"
+          echo "YT Create package: com.google.android.apps.youtube.producer" >> "$GITHUB_STEP_SUMMARY"
+          echo "Device profile: Pixel 7 Pro, Android 15, 4 GB RAM" >> "$GITHUB_STEP_SUMMARY"
+          echo "India locale/timezone: en-IN / Asia-Kolkata" >> "$GITHUB_STEP_SUMMARY"
+          echo "The watcher taps Install when visible; Google sign-in must be completed by the user if requested." >> "$GITHUB_STEP_SUMMARY"
