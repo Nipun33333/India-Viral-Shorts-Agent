@@ -214,16 +214,47 @@ def _join(segments, workdir):
     return output
 
 
+def _has_audio_stream(video):
+    result = run([
+        "ffprobe", "-v", "error", "-select_streams", "a:0",
+        "-show_entries", "stream=codec_type", "-of", "csv=p=0", video,
+    ], capture=True)
+    return bool(result.stdout.strip())
+
+
 def add_audio(video, script, workdir, destination):
+    """Add Hindi narration while retaining and ducking any generated ambience."""
     duration = int(script.get("duration_seconds") or len(script["scenes"]) * SCENE_SECONDS)
     if not 20 <= duration <= 30:
         raise ValueError(f"Shorts duration must be 20-30 seconds; got {duration}.")
     audio = speech(script, workdir)
+    source_has_audio = _has_audio_stream(video)
     command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", video]
-    if audio:
-        command.extend(["-i", audio, "-filter_complex", "[1:a]apad[a]", "-map", "0:v", "-map", "[a]"])
+
+    if audio and source_has_audio:
+        command.extend([
+            "-i", audio,
+            "-filter_complex",
+            "[0:a:0]volume=0.32[ambience];"
+            "[1:a:0]apad,volume=1.10[voice];"
+            "[ambience][voice]amix=inputs=2:duration=longest:dropout_transition=2,"
+            "alimiter=limit=0.95[mixed]",
+            "-map", "0:v:0", "-map", "[mixed]",
+        ])
+    elif audio:
+        command.extend([
+            "-i", audio,
+            "-filter_complex", "[1:a:0]apad[a]",
+            "-map", "0:v:0", "-map", "[a]",
+        ])
+    elif source_has_audio:
+        command.extend(["-map", "0:v:0", "-map", "0:a:0"])
     else:
-        command.extend(["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-map", "0:v", "-map", "1:a"])
+        command.extend([
+            "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+            "-map", "0:v:0", "-map", "1:a:0",
+        ])
+
     command.extend([
         "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-b:a", "128k",
         "-t", str(duration), "-movflags", "+faststart", destination,
