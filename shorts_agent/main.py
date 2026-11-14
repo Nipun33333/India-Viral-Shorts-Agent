@@ -18,6 +18,7 @@ from shorts_agent.render import (
 )
 from shorts_agent.trends import discover
 from shorts_agent.writer import make_script
+from shorts_agent.video_api import generate_gemini_video
 
 ROOT = Path(__file__).resolve().parents[1]
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -78,8 +79,14 @@ def run_agent(slot, backend):
             silent = yt_create_manual_video(slot, workdir)
             # YouTube Create Gemini-generated visuals may be realistic synthetic media.
             script["contains_synthetic_media"] = True
+        elif backend == "gemini_video":
+            silent = generate_gemini_video(script, workdir)
+            script["contains_synthetic_media"] = True
+            script["duration_seconds"] = int(os.getenv("GEMINI_VIDEO_TARGET_SECONDS", "20"))
         else:
-            raise ValueError("VIDEO_BACKEND must be motion, flow_manual, or yt_create_manual.")
+            raise ValueError(
+                "VIDEO_BACKEND must be motion, gemini_video, flow_manual, or yt_create_manual."
+            )
         add_audio(silent, script, workdir, video)
 
     # Persist backend-specific disclosure metadata after the selected source is known.
