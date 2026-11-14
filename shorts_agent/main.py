@@ -82,6 +82,10 @@ def run_agent(slot, backend):
             raise ValueError("VIDEO_BACKEND must be motion, flow_manual, or yt_create_manual.")
         add_audio(silent, script, workdir, video)
 
+    # Persist backend-specific disclosure metadata after the selected source is known.
+    (outdir / "script.json").write_text(
+        json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     report = validate_video(video)
     report.update({
         "backend": backend,
