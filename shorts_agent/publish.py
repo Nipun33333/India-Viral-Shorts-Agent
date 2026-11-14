@@ -156,10 +156,15 @@ def publish(video: Path, script: dict, contains_synthetic_media=False):
 
     results = {}
     errors = []
-    for name, upload in (
+    uploads = [
         ("youtube", lambda path, data: youtube_upload(path, data, contains_synthetic_media)),
-        ("instagram", instagram_upload),
-    ):
+    ]
+    if _truthy(os.getenv("ENABLE_INSTAGRAM_PUBLISH", "false")):
+        uploads.append(("instagram", instagram_upload))
+    else:
+        print("SKIP Instagram: publishing is disabled; set ENABLE_INSTAGRAM_PUBLISH=true to opt in.")
+
+    for name, upload in uploads:
         try:
             results[name] = upload(video, script)
         except Exception as exc:
