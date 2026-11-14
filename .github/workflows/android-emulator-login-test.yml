@@ -1,11 +1,6 @@
 name: Android Emulator - install YouTube Create
 
 on:
-  # Temporary one-time trigger for the higher-memory ANR recovery test.
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/android-emulator-login-test.yml"
   workflow_dispatch:
     inputs:
       session_minutes:
