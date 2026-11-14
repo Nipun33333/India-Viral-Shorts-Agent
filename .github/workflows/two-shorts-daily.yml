@@ -1,5 +1,8 @@
 name: India Viral Shorts - two daily slots
 on:
+  push:
+    branches:
+      - main
   schedule:
     # GitHub Actions cron is UTC: 04:30 = 10:00 IST; 12:30 = 18:00 IST.
     # GitHub schedules are best-effort and can be delayed.
