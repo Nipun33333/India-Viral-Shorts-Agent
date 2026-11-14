@@ -25,7 +25,16 @@ fi
 echo "Android is ready. Applying India locale and timezone..."
 adb shell settings put system system_locales en-IN
 adb shell settings put global time_zone Asia/Kolkata
+adb shell setprop persist.sys.timezone Asia/Kolkata || true
 adb shell am broadcast -a android.intent.action.LOCALE_CHANGED >/dev/null 2>&1 || true
+# Lower rendering load on the CI emulator; retain a full-HD portrait screen.
+adb shell wm size 1080x2400 || true
+adb shell wm density 420 || true
+adb shell settings put global window_animation_scale 0 || true
+adb shell settings put global transition_animation_scale 0 || true
+adb shell settings put global animator_duration_scale 0 || true
+adb shell settings put system screen_off_timeout 2147483647 || true
+adb shell settings put global stay_on_while_plugged_in 3 || true
 
 echo "Opening the official YouTube Create Play Store listing..."
 adb shell am start -a android.intent.action.VIEW -d "market://details?id=$PACKAGE"
@@ -99,6 +108,7 @@ def package_installed():
 
 deadline = time.monotonic() + SESSION_MINUTES * 60
 last_tap = 0.0
+last_wait_tap = 0.0
 last_notice = ""
 last_heartbeat = 0.0
 last_labels = []
@@ -123,6 +133,7 @@ while time.monotonic() < deadline:
 
     labels = []
     install_bounds = None
+    wait_bounds = None
     try:
         root = ET.fromstring(xml_text)
         for node in root.iter("node"):
@@ -131,16 +142,37 @@ while time.monotonic() < deadline:
             label = text or desc
             if label:
                 labels.append(label)
-            if label.lower() in {"install", "install app"}:
-                bounds = node.attrib.get("bounds", "")
-                match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
-                if match:
-                    install_bounds = tuple(map(int, match.groups()))
+            bounds = node.attrib.get("bounds", "")
+            match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+            if match and label.lower() in {"install", "install app"}:
+                install_bounds = tuple(map(int, match.groups()))
+            if match and label.lower() == "wait":
+                wait_bounds = tuple(map(int, match.groups()))
     except ET.ParseError:
         pass
 
     last_labels = labels
     joined = " | ".join(labels).lower()
+
+    # Android can repeatedly show a Pixel Launcher ANR while Play Services
+    # is checking account information. Prefer Wait; never close the launcher.
+    if "pixel launcher isn't responding" in joined and wait_bounds and time.monotonic() - last_wait_tap > 12:
+        x1, y1, x2, y2 = wait_bounds
+        x, y = (x1 + x2) // 2, (y1 + y2) // 2
+        print("Pixel Launcher ANR detected; tapping Wait to keep the launcher and Play Store alive.", flush=True)
+        subprocess.run(
+            ["adb", "shell", "input", "tap", str(x), str(y)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        last_wait_tap = time.monotonic()
+
+    if "checking info" in joined and last_notice != "checking":
+        print("GOOGLE_PLAY_CHECKING_INFO: Play Services is checking the Google account; leaving this screen open.", flush=True)
+        last_notice = "checking"
+    elif "checking info" not in joined and last_notice == "checking":
+        last_notice = ""
 
     if "sign in" in joined and last_notice != "signin":
         print("WAITING_FOR_GOOGLE_SIGN_IN: Complete sign-in on the remote emulator screen.", flush=True)
@@ -172,7 +204,7 @@ while time.monotonic() < deadline:
         print("Still checking Play Store for Install / Google sign-in. App installed: false.", flush=True)
         last_heartbeat = time.monotonic()
 
-    time.sleep(6)
+    time.sleep(12)
 else:
     print("YT_CREATE_INSTALLED=false (remote session ended before package installation).", flush=True)
     print("Final Play Store screen text: " + " | ".join(last_labels[-30:]), flush=True)
