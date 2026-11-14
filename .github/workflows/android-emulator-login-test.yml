@@ -1,6 +1,11 @@
 name: Android Emulator - install YouTube Create
 
 on:
+  # Temporary validation trigger; removed immediately after the run queues.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-emulator-login-test.yml"
   workflow_dispatch:
     inputs:
       session_minutes:
