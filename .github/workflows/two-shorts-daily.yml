@@ -13,11 +13,11 @@ on:
         type: choice
         options: ['1', '2', 'all']
       backend:
-        description: 'motion=automatic; yt_create_manual=join clips exported from YouTube Create'
+        description: 'gemini_video=cloud AI video; motion=original graphics; manual modes use exported clips'
         required: true
-        default: 'motion'
+        default: 'gemini_video'
         type: choice
-        options: ['motion', 'yt_create_manual', 'flow_manual']
+        options: ['gemini_video', 'motion', 'yt_create_manual', 'flow_manual']
       publish:
         description: 'Upload the manual run to YouTube (private); default is preview only'
         required: true
@@ -34,10 +34,12 @@ concurrency:
 jobs:
   create-and-upload:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_MODEL: gemini-3.5-flash-lite
+      GEMINI_VIDEO_MODEL: ${{ vars.GEMINI_VIDEO_MODEL || 'gemini-omni-1.1-flash' }}
+      GEMINI_VIDEO_TARGET_SECONDS: ${{ vars.GEMINI_VIDEO_TARGET_SECONDS || '20' }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -47,7 +49,7 @@ jobs:
       CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
       CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
       CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-      VIDEO_BACKEND: ${{ inputs.backend || 'motion' }}
+      VIDEO_BACKEND: ${{ inputs.backend || vars.VIDEO_BACKEND || 'motion' }}
       VIDEO_SLOT: ${{ inputs.slot || 'auto' }}
       AUTO_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
       YOUTUBE_PRIVACY: private
@@ -66,6 +68,20 @@ jobs:
         run: pip install -r requirements.txt pytest
       - name: Run project tests
         run: python -m pytest -q
+      - name: Check cloud video generation credentials
+        if: env.VIDEO_BACKEND == 'gemini_video'
+        shell: bash
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::gemini_video requires GEMINI_API_KEY in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ "$GEMINI_VIDEO_TARGET_SECONDS" != "20" ] && [ "$GEMINI_VIDEO_TARGET_SECONDS" != "30" ]; then
+            echo "::error::GEMINI_VIDEO_TARGET_SECONDS must be 20 or 30."
+            exit 1
+          fi
+          echo "Cloud generation model: $GEMINI_VIDEO_MODEL"
+          echo "Target duration: $GEMINI_VIDEO_TARGET_SECONDS seconds"
       - name: Check credentials before automatic publishing
         if: github.event_name == 'schedule' || inputs.publish == true
         env:
