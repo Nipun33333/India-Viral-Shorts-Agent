@@ -2,7 +2,7 @@ name: India Viral Shorts - two daily slots
 on:
   schedule:
     # GitHub Actions cron is UTC: 04:30 = 10:00 IST; 12:30 = 18:00 IST.
-    # GitHub schedules can be delayed or occasionally skipped.
+    # GitHub schedules are best-effort and can be delayed.
     - cron: '30 4,12 * * *'
   workflow_dispatch:
     inputs:
@@ -13,22 +13,31 @@ on:
         type: choice
         options: ['1', '2', 'all']
       backend:
-        description: 'motion=unattended; flow_manual=manually provided Flow MP4s'
+        description: 'motion=automatic; yt_create_manual=join clips exported from YouTube Create'
         required: true
         default: 'motion'
         type: choice
-        options: ['motion', 'flow_manual']
+        options: ['motion', 'yt_create_manual', 'flow_manual']
+      publish:
+        description: 'Upload the manual run to YouTube (private); default is preview only'
+        required: true
+        default: false
+        type: boolean
+
 permissions:
   contents: read
+
 concurrency:
   group: india-shorts-${{ github.ref }}-${{ github.event.schedule || inputs.slot }}
   cancel-in-progress: false
+
 jobs:
   create-and-upload:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: gemini-2.5-flash-lite
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -40,9 +49,10 @@ jobs:
       CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
       VIDEO_BACKEND: ${{ inputs.backend || 'motion' }}
       VIDEO_SLOT: ${{ inputs.slot || 'auto' }}
-      AUTO_PUBLISH: 'true'
+      AUTO_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish == true }}
       YOUTUBE_PRIVACY: private
       TTS_BACKEND: auto
+      TRENDS_REGION: IN
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,16 +60,16 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install system requirements
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng fonts-noto-core
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng fonts-noto-core fonts-freefont-ttf
       - name: Install Python packages
         run: pip install -r requirements.txt
-      - name: Run slot
+      - name: Run Indian trend-to-Shorts pipeline
         run: python -m shorts_agent.main
-      - name: Preserve preview, scripts, and publish receipts
+      - name: Preserve MP4, Gemini scripts, YouTube Create prompts and publish receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shorts-${{ github.run_id }}-${{ github.run_attempt }}
+          name: india-shorts-${{ github.run_id }}-${{ github.run_attempt }}
           path: output/
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 14
