@@ -27,6 +27,8 @@ def discover(limit=20):
     """Official YouTube API, not a 'trending Reels' API. Seed/manual fallback."""
     items = []
     key = os.getenv("YOUTUBE_API_KEY", "").strip()
+    region_code = os.getenv("TRENDS_REGION", "IN").strip().upper() or "IN"
+    language = os.getenv("TRENDS_LANGUAGE", "hi").strip().lower() or "hi"
     if key:
         try:
             base = "https://www.googleapis.com/youtube/v3"
@@ -35,8 +37,8 @@ def discover(limit=20):
             ids = []
             for query in ("hindi comedy shorts", "india funny reels", "indian relatable shorts"):
                 data = _get(base + "/search", {
-                    "part": "snippet", "type": "video", "regionCode": "IN",
-                    "relevanceLanguage": "hi", "videoDuration": "short",
+                    "part": "snippet", "type": "video", "regionCode": region_code,
+                    "relevanceLanguage": language, "videoDuration": "short",
                     "order": "viewCount", "publishedAfter": recent,
                     "maxResults": 20, "q": query, "key": key,
                 })
