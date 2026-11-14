@@ -1,0 +1,98 @@
+name: Android Emulator - install YouTube Create
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_minutes:
+        description: "How long to keep the remote emulator open"
+        required: true
+        type: choice
+        default: "45"
+        options:
+          - "20"
+          - "30"
+          - "45"
+          - "60"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulator-login-test
+  cancel-in-progress: true
+
+jobs:
+  emulator-login:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      EMULATOR_VNC_PASSWORD: ${{ secrets.EMULATOR_VNC_PASSWORD }}
+      SESSION_MINUTES: ${{ inputs.session_minutes || '45' }}
+      ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: "120"
+
+    steps:
+      - name: Check VNC password secret
+        shell: bash
+        run: |
+          if [ -z "$EMULATOR_VNC_PASSWORD" ]; then
+            echo "::error::Add repository secret EMULATOR_VNC_PASSWORD before running this workflow."
+            exit 1
+          fi
+          if [ "${#EMULATOR_VNC_PASSWORD}" -lt 16 ]; then
+            echo "::error::EMULATOR_VNC_PASSWORD must be at least 16 characters."
+            exit 1
+          fi
+
+      - name: Enable KVM access for the runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
+          grep -E -m1 '(vmx|svm)' /proc/cpuinfo
+
+      - name: Install virtual display and remote-screen tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb x11vnc novnc websockify curl libpulse0
+          Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset >/tmp/xvfb.log 2>&1 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Install Cloudflare Tunnel
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+
+      - name: Check out repository install script
+        uses: actions/checkout@v4
+
+      - name: Boot Android 15 Play Store emulator and install YT Create
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis_playstore
+          arch: x86_64
+          cores: 4
+          ram-size: 8192M
+          heap-size: 1536M
+          disk-size: 10G
+          profile: pixel_7_pro
+          avd-name: youtube-create-pixel7pro
+          force-avd-creation: true
+          emulator-boot-timeout: 1200
+          emulator-options: -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          disable-animations: false
+          enable-hw-keyboard: true
+          disable-linux-hw-accel: false
+          # The action runs each script line through /bin/sh separately.
+          # Keep this to ONE command and run the full logic with Bash.
+          script: bash "$GITHUB_WORKSPACE/.github/scripts/install_youtube_create.sh"
+
+      - name: Report install outcome
+        if: always()
+        run: |
+          echo "YT Create package: com.google.android.apps.youtube.producer" >> "$GITHUB_STEP_SUMMARY"
+          echo "Device profile: Pixel 7 Pro, Android 15, 8 GB RAM, 4 vCPU, 720x1600 display" >> "$GITHUB_STEP_SUMMARY"
+          echo "India locale/timezone: en-IN / Asia-Kolkata" >> "$GITHUB_STEP_SUMMARY"
+          echo "The watcher taps Install when visible; Google sign-in must be completed by the user if requested." >> "$GITHUB_STEP_SUMMARY"
