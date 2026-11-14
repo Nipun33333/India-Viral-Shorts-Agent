@@ -88,7 +88,7 @@ def make_script(topics, slot):
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
-        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+        model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
         prompt = f"""You are an Indian YouTube Shorts writer and prompt engineer.
 Write one ORIGINAL, advertiser-friendly Hindi/Hinglish comedy micro-story for a 9:16 vertical Short.
 Public trend signals (use only as broad inspiration; do not reproduce their videos): {json.dumps(topics[:10], ensure_ascii=False)}
