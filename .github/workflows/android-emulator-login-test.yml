@@ -1,6 +1,11 @@
 name: Android Emulator - install YouTube Create
 
 on:
+  # Temporary one-time trigger to validate the shell-runner fix.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-emulator-login-test.yml"
   workflow_dispatch:
     inputs:
       session_minutes:
@@ -23,6 +28,7 @@ concurrency:
 
 jobs:
   emulator-login:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip-emulator-run]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:
