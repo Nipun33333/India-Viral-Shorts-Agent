@@ -14,7 +14,7 @@ For each slot, the agent:
 5. Validates that the MP4 is portrait, at least 720x1280, has audio, and is 20-30 seconds long.
 6. Uploads to YouTube as **private** when the YouTube OAuth secrets are configured. The scheduled workflow is automatic; no manual Run workflow click is required.
 
-The scheduled workflow defaults to motion graphics so that paid video-generation calls are never enabled unexpectedly. To run a fully generated cloud-video pipeline, select `gemini_video` manually or set the repository variable `VIDEO_BACKEND=gemini_video`. Uploads remain private for review; do not switch to public until you have reviewed the generated content and metadata.
+The scheduled workflow now defaults to paid Gemini Omni cloud-video generation. To disable per-second video charges and use the motion-graphics fallback, set the repository variable `VIDEO_BACKEND=motion`. Uploads remain private for review; do not switch to public until you have reviewed the generated content and metadata.
 
 ## Fully cloud AI video generation
 
@@ -39,7 +39,7 @@ To enable scheduled cloud video generation, add the repository variable under **
 - Optional: `GEMINI_VIDEO_TARGET_SECONDS` = `20` or `30` (default 20)
 - Optional: `GEMINI_VIDEO_MODEL` = `gemini-omni-1.1-flash`
 
-The scheduled jobs remain on the motion backend until `VIDEO_BACKEND` is explicitly set to `gemini_video`, to avoid unexpected paid API charges.
+Scheduled jobs use `gemini_video` by default. Set the repository variable `VIDEO_BACKEND=motion` to disable paid video generation and use original motion graphics instead.
 
 ### Video generation cost
 
@@ -124,6 +124,6 @@ Output files are written to output/YYYY-MM-DD/slot1/ and slot2/. Each slot inclu
 - The agent creates new stories. It must not download or reproduce viral creators' actual clips, dialogue, faces, music or edits.
 - YouTube Create does not currently expose a supported public editor API for unattended automation; its prompts and clip exports are therefore a manual optional stage.
 - Gemini Omni inside YouTube Create is available only to selected creators; availability of the app does not guarantee access to its generative video tools.
-- Paid Gemini Omni video-generation calls are only made when the gemini_video backend is selected. The scheduled workflow defaults to motion until VIDEO_BACKEND=gemini_video is explicitly configured.
+- Scheduled runs use paid Gemini Omni video generation by default. Set VIDEO_BACKEND=motion to opt out of per-second video-generation charges.
 - YouTube uploads stay private by default. Review before making content public.
 - GitHub scheduled runs are best-effort. Instagram publishing is optional and immediate if all Instagram secrets are configured.
