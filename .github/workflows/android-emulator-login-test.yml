@@ -1,6 +1,11 @@
 name: Android Emulator - install YouTube Create
 
 on:
+  # Temporary one-time run to validate automatic app launch and persistent VNC session.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-emulator-login-test.yml"
   workflow_dispatch:
     inputs:
       session_minutes:
